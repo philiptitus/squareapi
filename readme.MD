@@ -4,6 +4,7 @@
 ## Overview
 
 **SquareAPI** is a Django-based application designed to ease community trash collection. 
+Square API powers ReUp a React-Native app you can access the app from here: [ReUp Official](https://github.com/philiptitus/ReUp.git)
 
 
 
