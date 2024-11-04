@@ -31,10 +31,14 @@ class UserSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField(read_only=True)
     _id = serializers.SerializerMethodField(read_only=True)
     isAdmin = serializers.SerializerMethodField(read_only=True)
+    coname = serializers.SerializerMethodField(read_only=True)
+    aname = serializers.SerializerMethodField(read_only=True)
 
 
 
-    
+
+
+
 
 
 
@@ -47,27 +51,36 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get__id(self, obj):
         return obj.id
-    
+
     def get_isAdmin(self, obj):
-        return obj.is_staff 
-    
-    
-        
+        return obj.is_staff
+
+
+
+    def get_coname(self, obj):
+        return obj.community.name if obj.community else None
+
+
+    def get_aname(self, obj):
+        return obj.area.name if obj.area else None
+
+
+
     def get_name(self, obj):
         name = obj.first_name
         if name == '':
             name = obj.email
 
         return name
-    
 
-    
+
+
     def get_avi(self, obj):
         avi = obj.avi
 
 
         return avi
-  
+
 # class UserSerializerWithToken(UserSerializer):
 #     token = serializers.SerializerMethodField(read_only=True)
 
@@ -78,7 +91,7 @@ class UserSerializer(serializers.ModelSerializer):
 #     def get_token(self, obj):
 #         token = RefreshToken.for_user(obj)
 #         return str(token.access_token)
-    
+
 
 
 
@@ -107,7 +120,7 @@ class UserSerializerWithToken(UserSerializer):
 
     class Meta:
         model = Userr
-        fields = ['id', '_id', 'username', 'email', 'name', 'isAdmin', 'bio', 'token', 'expiration_time']
+        fields = ['id', '_id', 'username', 'email', 'name', 'isAdmin', 'is_demo','bio', 'user_type','token', 'expiration_time']
 
     def get_token(self, obj):
         token = RefreshToken.for_user(obj)
@@ -123,7 +136,7 @@ class UserSerializerWithToken(UserSerializer):
         expiration_datetime_utc = datetime.utcfromtimestamp(expiration_timestamp)  # Convert expiration timestamp to UTC datetime
         expiration_datetime_local = expiration_datetime_utc.astimezone(timezone('Africa/Nairobi'))  # Convert to Nairobi timezone
         expiration_datetime_local += timedelta(hours=3)  # Add three hours to the expiration time
-        return expiration_datetime_local.strftime('%Y-%m-%d %H:%M:%S %Z')  # 
+        return expiration_datetime_local.strftime('%Y-%m-%d %H:%M:%S %Z')  #
 
 
 
@@ -137,7 +150,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         email = attrs.get('email')
         user = Userr.objects.get(email=email)
 
-            
+
 
         if Userr.objects.filter(email=email).exists():
 
@@ -146,7 +159,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             request = self.context.get('request')
             abslink = f"http://localhost:3000/#/password-reset-confirm/{uidb64}/{token}/"
             print(abslink)
-            template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'INTERVIEW.html')
+            template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'Link.html')
             with open(template_path, 'r', encoding='utf-8') as template_file:
                 html_content = template_file.read()
 
@@ -234,22 +247,38 @@ class NoticeSerializer(serializers.ModelSerializer):
 
 
 class TrashSerializer(serializers.ModelSerializer):
+
+
     class Meta:
         model = Trash
-        fields = ['photo',  'point',  'types'] 
+        fields = ['photo',  'point',  'types', 'verification_status', 'timestamp']
         read_only_fields = ['verification_status', 'timestamp', 'types']
 
 
 
 
+
+
 class CommunitySerializer(serializers.ModelSerializer):
+    aname = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Community
         fields = '__all__'
 
+    def get_aname(self, obj):
+        return obj.admin.username if obj.admin else None
+
 
 
 class CommunityBlackListSerializer(serializers.ModelSerializer):
+
+    name = serializers.SerializerMethodField(read_only=True)
+    coname = serializers.SerializerMethodField(read_only=True)
+
+    email = serializers.SerializerMethodField(read_only=True)
+
+
     class Meta:
         model = CommunityBlackList
         fields = '__all__'
@@ -257,12 +286,40 @@ class CommunityBlackListSerializer(serializers.ModelSerializer):
 
 
 
+    def get_name(self, obj):
+        return obj.user.username if obj.user else None
+
+
+    def get_coname(self, obj):
+        return obj.community.name if obj.community else None
+
+
+    def get_email(self, obj):
+        return obj.user.email if obj.user else None
+
+
 
 
 class AdminAreaSerializer(serializers.ModelSerializer):
+
+
+    aname = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = AdminArea
         fields = '__all__'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Remove coordinates field if it's a GET request
+        request = self.context.get('request')
+        if request and request.method == 'GET':
+            representation.pop('coordinates', None)
+        return representation
+
+
+    def get_aname(self, obj):
+        return obj.admin.username if obj.admin else None
 
 
 
@@ -275,14 +332,14 @@ class PointSerializer(serializers.ModelSerializer):
 
 
 
- 
+
 
 
 
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
-        fields = ['report',  'points', ] 
+        fields = ['report',  'points', 'timestamp']
 
 
 
@@ -292,19 +349,29 @@ class ReportSerializer(serializers.ModelSerializer):
 
 
 class IndividualLeaderboardSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = IndividualLeaderboard
-        fields = '__all__'
+        fields = '__all__'  # Include any other fields you need here
 
 
-
+    def get_username(self, obj):
+        return obj.user.username if obj.user else None
 
 
 
 class CommunityLeaderboardSerializer(serializers.ModelSerializer):
+
+    name = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = CommunityLeaderboard
         fields = '__all__'
+
+
+    def get_name(self, obj):
+        return obj.community.name if obj.community else None
 
 
 
@@ -318,9 +385,13 @@ class QuestionnaireSerializer(serializers.ModelSerializer):
 
 
 class LikeSerializer(serializers.ModelSerializer):
+
+    liker_avi = serializers.ImageField(read_only=True)
+    liker_name = serializers.CharField(read_only=True)
     class Meta:
         model = Like
         fields = '__all__'
+
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -344,13 +415,13 @@ class CommentSerializer(serializers.ModelSerializer):
 class PostImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = PostImage
-        fields = '__all__' 
+        fields = '__all__'
 
 
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
-        fields = '__all__' 
+        fields = '__all__'
 
 
 
@@ -377,7 +448,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = '__all__' 
+        fields = '__all__'
 
 
 
@@ -389,39 +460,34 @@ class PostSerializer(serializers.ModelSerializer):
         for album in uploaded_albums:
             newpost_album = PostImage.objects.create(post=post, album=album)
         return post
-        
-
-        
-        
 
 
 
-    
+
+
+
+
+
     def get_likers(self, obj):
         likers = obj.like_set.all()
         serializer = LikeSerializer(likers, many=True)
         return serializer.data
-    
+
     def get_comments(self, obj):
         comments = obj.comment_set.all()
         serializer = CommentSerializer(comments, many=True)
         return serializer.data
 
-    
- 
+
+
 
     def get_total_likes(self, obj):
         return obj.like_set.count()
-    
+
     def get_total_comments(self, obj):
         return obj.comment_set.count()
          # Update with actual fields from the Product model
 
 
-
-class OrganizationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Organization
-        fields = '__all__'
 
 

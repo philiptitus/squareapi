@@ -7,24 +7,32 @@ urlpatterns = [
 
 
     path('trash/', CreateTrashView.as_view(), name='create-trash'),
+    path('trash/direct/', CreateTrashDirectView.as_view(), name='create-trash'),
+
     path('trash/all/', ListTrashView.as_view(), name='list-trash'),
 
 
     path('point/', CreatePointView.as_view(), name='create-point'),
     path('points/', RetrievePointsWithinRadiusView.as_view(), name='get-points'),
- 
+
 
     path('upload/', uploadImage.as_view(), name='image-upload'),
     path('uploads/', UploadAlbum.as_view(), name='images-upload'),
     path('videos/', UploadVideo.as_view(), name='video-upload'),
     path('new/', CreatePost.as_view(), name='new-post'),
-    path('gallery/', GetPostsView.as_view(), name='get_posts'), 
+    path('gallery/', GetPostsView.as_view(), name='get_posts'),
+    path('blacklisted-communities/', ListBlacklistedCommunitiesView.as_view(), name='list-blacklisted-communities'),
+
+    path('insights/', RandomInsightView.as_view(), name='get_posts'),
+
 
 
     path('community/', CreateCommunityView.as_view(), name='create-community'),
 
 
     path('leaderboards/individual/', ListIndividualLeaderboardsView.as_view(), name='list-individual-leaderboards'),
+    path('leaderboards/community/', RetrieveCommunityLeaderboardView.as_view(), name='retrieve-community-leaderboard'),
+
 
 
     path('newarea/', CreateAdminAreaView.as_view(), name='create-admin-area'),
@@ -33,7 +41,6 @@ urlpatterns = [
 
     path('newreport/', CreateReportView.as_view(), name='create-report'),
 
-    path('organizations/create/', CreateOrganizationView.as_view(), name='create-organization'),
 
 
 
@@ -42,13 +49,16 @@ urlpatterns = [
     path('blacklist/appeal/', AppealBlacklistView.as_view(), name='appeal_blacklist'),
     path('blacklist/list/', ListBlacklistedUsersView.as_view(), name='list_blacklisted_users'),
 
+    path('reports/community/', ListReportsByCommunityView.as_view(), name='list-reports-by-community'),
+
+    path('trash/verify/', VerifyTrashView.as_view(), name='verify-trash'),
+
 
 
     path('<str:pk>/', GetPost.as_view(), name='get_post'),
 
     path('trash/<int:pk>/update/', UpdateTrashView.as_view(), name='update-trash'),
     path('trash/<int:pk>/', RetrieveTrashView.as_view(), name='retrieve-trash'),
-    path('trash/<int:pk>/verify/', VerifyTrashView.as_view(), name='verify-trash'),
 
 
     path('point/<int:pk>/', RetrievePointView.as_view(), name='retrieve-point'),
@@ -58,21 +68,20 @@ urlpatterns = [
 
 
 
-    path('update/<str:pk>/', UpdatePost.as_view(), name='post-update'), 
-    path('<str:pk>/like/', LikePost.as_view(), name='like'), 
+    path('update/<str:pk>/', UpdatePost.as_view(), name='post-update'),
+    path('<str:pk>/like/', LikePost.as_view(), name='like'),
     path('<str:pk>/comment/', CreateComment.as_view(), name='create-comment'),
     path('comment/<str:pk>/delete/', deleteComment.as_view(), name='delete-comment'),
     path('<str:pk>/delete/', deletePost.as_view(), name='delete-post'),
     path('posts/check-expired/', CheckExpiredPosts.as_view(), name='check-expired-posts'),
 
 
-    path('community/<int:pk>/', UpdateCommunityView.as_view(), name='update-community'),
-    path('community/<int:pk>/', RetrieveCommunityView.as_view(), name='retrieve-community'),
-    path('community/<int:pk>/', DeleteCommunityView.as_view(), name='delete-community'),
+    path('community/<int:pk>/update/', UpdateCommunityView.as_view(), name='update-community'),
+    path('community/<int:pk>/get/', RetrieveCommunityView.as_view(), name='retrieve-community'),
+    path('community/<int:pk>/delete/', DeleteCommunityView.as_view(), name='delete-community'),
 
 
 
-    path('leaderboards/community/', RetrieveCommunityLeaderboardView.as_view(), name='retrieve-community-leaderboard'),
 
 
 
@@ -81,16 +90,9 @@ urlpatterns = [
 
 
 
-    path('reports/community/<int:community_id>/', ListReportsByCommunityView.as_view(), name='list-reports-by-community'),
     path('reports/<int:pk>/', DeleteReportView.as_view(), name='delete-report'),
 
 
-
-
-
-    path('organizations/<int:pk>/', RetrieveOrganizationView.as_view(), name='retrieve-organization'),
-    path('organizations/<int:pk>/update/', UpdateOrganizationView.as_view(), name='update-organization'),
-    path('organizations/<int:pk>/delete/', DeleteOrganizationView.as_view(), name='delete-organization'),
 
 
 ]

@@ -7,6 +7,7 @@ urlpatterns = [
     path('reset/', ResetImage.as_view(), name='image-reset'),
     path('notices/', UserNotices.as_view(), name='notices'),
 
+
     path('upload/', uploadImage.as_view(), name='image-upload'),
     path('login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('register/', RegisterUser.as_view(), name='register'),

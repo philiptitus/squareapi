@@ -14,5 +14,4 @@ Shapely==2.0.5
 django-cors-headers
 google-generativeai
 mysqlclient
-python-dotenv==1.0.1
 

@@ -32,7 +32,30 @@ from shapely.ops import unary_union
 from base.core.image_api import get_waste_type_from_image
 from base.core.insight_api import generate_markdown
 
- 
+
+# class CreateTrashView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         serializer = TrashSerializer(data=request.data)
+#         if serializer.is_valid():
+#             # Save the uploaded file temporarily in memory
+#             temp_file = serializer.validated_data['photo']
+
+#             # Generate waste type using the AI model
+#             waste_type = get_waste_type_from_image(temp_file, settings.GOOGLE_API_KEY)
+
+#             # Save the trash object with the AI-generated type and the user
+#             trash = Trash.objects.create(
+#                 user=request.user,
+#                 photo=serializer.validated_data['photo'],
+#                 point=serializer.validated_data['point'],
+#                 types=waste_type
+#             )
+#             return Response(TrashSerializer(trash).data, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 class CreateTrashView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -50,7 +73,7 @@ class CreateTrashView(APIView):
             # Check if the generated waste type is accepted at the specified point
             if waste_type not in point.types:
                 return Response(
-                    {"detail": "You can't throw this type of trash here."},
+                    {"detail": f"You cannot throw this type of trash here. Look for {waste_type} collection points."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -63,10 +86,151 @@ class CreateTrashView(APIView):
             )
             return Response(TrashSerializer(trash).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+from django.utils import timezone
+from rest_framework.parsers import JSONParser
+from rest_framework.exceptions import ParseError
+
+
+
+class CreateTrashDirectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Parse the JSON data from the request
+        try:
+            data = JSONParser().parse(request)
+        except ParseError:
+            return Response({"detail": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate the required fields are present
+        required_fields = ['trash_type', 'point']
+        for field in required_fields:
+            if field not in data:
+                return Response({"detail": "This field is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Extract the trash type and point
+        trash_type = data['trash_type']
+        point = data['point']
+
+        # Check if the provided point exists
+        try:
+            point_instance = Point.objects.get(id=point)
+        except Point.DoesNotExist:
+            return Response({"detail": "You chose a non-existent point."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # # Check if the provided trash type is accepted at the specified point
+        # if trash_type not in point_instance.types:
+        #     return Response(
+        #         {"detail": f"You cannot throw this type of trash here. Look for {trash_type} collection points."},
+        #         status=status.HTTP_400_BAD_REQUEST
+        #     )
+
+        # Save the trash object with the provided type and the user
+        trash = Trash.objects.create(
+            user=request.user,
+            point=point_instance,
+            types=trash_type,
+        )
+        return Response(TrashSerializer(trash).data, status=status.HTTP_201_CREATED)
+
+
+# class VerifyTrashView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     parser_classes = [JSONParser]
+
+#     POINTS_AWARD_SYSTEM = {
+#         'Hazardous': 10,
+#         'Electronic': 9,
+#         'Metal': 8,
+#         'Plastic': 7,
+#         'General': 6,
+#         'Glass': 5,
+#         'Paper': 4,
+#         'Organic': 3,
+#         'Food': 2,
+#     }
+
+#     INDIVIDUAL_MILESTONES = [100, 500, 1000, 5000, 10000]
+#     COMMUNITY_MILESTONES = [1000, 10000, 25000, 50000, 100000]
+
+#     def post(self, request):
+#         # Ensure the request data is JSON
+#         if not request.content_type == 'application/json':
+#             return Response({'detail': 'Content-Type must be application/json.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             request_data = request.data
+#         except ParseError:
+#             return Response({'detail': 'Invalid JSON.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             trash = Trash.objects.filter(user=request.user).latest('timestamp')
+#         except Trash.DoesNotExist:
+#             return Response({'detail': 'No trash found for the user.'}, status=status.HTTP_404_NOT_FOUND)
+
+#         status_data = request_data.get('status', None)
+
+#         if status_data is None:
+#             return Response({'detail': 'Status field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         if status_data in ['yes', 'no']:
+#             # Generate AI insight and create/update Insight object
+#             api_key = settings.GOOGLE_API_KEY
+#             markdown_text = generate_markdown(api_key, trash.types)
+#             Insights.objects.filter(trash=trash, user=request.user).delete()
+#             Insights.objects.create(trash=trash, user=request.user, description=markdown_text)
+
+#         if status_data == 'yes':
+#             trash.verification_status = True
+#             trash.save()
+#             self.award_points(trash)
+#             return Response({'detail': 'Trash verification status updated to true, points awarded, and insight generated.'}, status=status.HTTP_200_OK)
+
+#         if status_data == 'na':
+#             trash.delete()
+#             return Response({'detail': 'Trash object deleted.'}, status=status.HTTP_200_OK)
+
+#         return Response({'detail': 'Invalid status value.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#     def award_points(self, trash):
+#         points = self.POINTS_AWARD_SYSTEM.get(trash.types, 0)
+#         user = trash.user
+#         community = user.community
+
+#         # Update IndividualLeaderboard
+#         individual_leaderboard, created = IndividualLeaderboard.objects.get_or_create(user=user)
+#         previous_points = individual_leaderboard.points
+#         individual_leaderboard.points += points
+#         individual_leaderboard.save()
+
+#         # Check for individual milestones
+#         for milestone in self.INDIVIDUAL_MILESTONES:
+#             if previous_points < milestone <= individual_leaderboard.points:
+#                 Notice.objects.create(
+#                     user=user,
+#                     message=f'Congratulations! You have reached {milestone} points.'
+#                 )
+
+#         # Update CommunityLeaderboard
+#         if community:
+#             community_leaderboard, created = CommunityLeaderboard.objects.get_or_create(community=community)
+#             previous_community_points = community_leaderboard.points
+#             community_leaderboard.points += points
+#             community_leaderboard.save()
+
+#             # Check for community milestones
+#             for milestone in self.COMMUNITY_MILESTONES:
+#                 if previous_community_points < milestone <= community_leaderboard.points:
+#                     Notice.objects.create(
+#                         user=community.admin,
+#                         message=f'Community {community.name} has reached {milestone} points.'
+#                     )
+
 
 
 class VerifyTrashView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
 
     POINTS_AWARD_SYSTEM = {
         'Hazardous': 10,
@@ -83,18 +247,28 @@ class VerifyTrashView(APIView):
     INDIVIDUAL_MILESTONES = [100, 500, 1000, 5000, 10000]
     COMMUNITY_MILESTONES = [1000, 10000, 25000, 50000, 100000]
 
-    def post(self, request, pk):
-        trash = get_object_or_404(Trash, pk=pk)
-        if trash.user != request.user:
-            return Response({'detail': 'You do not have permission to update this item.'}, status=status.HTTP_403_FORBIDDEN)
+    def post(self, request):
+        if not request.content_type == 'application/json':
+            return Response({'detail': 'Content-Type must be application/json.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        status_data = request.data.get('status', None)
+        try:
+            request_data = request.data
+            print(f"Received request data: {request_data}")
+        except ParseError:
+            return Response({'detail': 'Invalid JSON.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            trash = Trash.objects.filter(user=request.user).latest('timestamp')
+        except Trash.DoesNotExist:
+            return Response({'detail': 'No trash found for the user.'}, status=status.HTTP_404_NOT_FOUND)
+
+        status_data = request_data.get('status', None)
+        print(f"Status data received: {status_data}")
 
         if status_data is None:
             return Response({'detail': 'Status field is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if status_data in ['yes', 'no']:
-            # Generate AI insight and create/update Insight object
             api_key = settings.GOOGLE_API_KEY
             markdown_text = generate_markdown(api_key, trash.types)
             Insights.objects.filter(trash=trash, user=request.user).delete()
@@ -105,6 +279,11 @@ class VerifyTrashView(APIView):
             trash.save()
             self.award_points(trash)
             return Response({'detail': 'Trash verification status updated to true, points awarded, and insight generated.'}, status=status.HTTP_200_OK)
+
+        if status_data == 'no':
+            trash.verification_status = False
+            trash.save()
+            return Response({'detail': 'Trash verification status updated to false, and insight generated.'}, status=status.HTTP_200_OK)
 
         if status_data == 'na':
             trash.delete()
@@ -117,13 +296,15 @@ class VerifyTrashView(APIView):
         user = trash.user
         community = user.community
 
-        # Update IndividualLeaderboard
         individual_leaderboard, created = IndividualLeaderboard.objects.get_or_create(user=user)
         previous_points = individual_leaderboard.points
         individual_leaderboard.points += points
         individual_leaderboard.save()
 
-        # Check for individual milestones
+        # Update user's points
+        user.points = individual_leaderboard.points
+        user.save()
+
         for milestone in self.INDIVIDUAL_MILESTONES:
             if previous_points < milestone <= individual_leaderboard.points:
                 Notice.objects.create(
@@ -131,20 +312,113 @@ class VerifyTrashView(APIView):
                     message=f'Congratulations! You have reached {milestone} points.'
                 )
 
-        # Update CommunityLeaderboard
         if community:
             community_leaderboard, created = CommunityLeaderboard.objects.get_or_create(community=community)
             previous_community_points = community_leaderboard.points
             community_leaderboard.points += points
             community_leaderboard.save()
 
-            # Check for community milestones
             for milestone in self.COMMUNITY_MILESTONES:
                 if previous_community_points < milestone <= community_leaderboard.points:
                     Notice.objects.create(
                         user=community.admin,
                         message=f'Community {community.name} has reached {milestone} points.'
                     )
+
+
+
+# class VerifyTrashView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     parser_classes = [JSONParser]
+
+#     POINTS_AWARD_SYSTEM = {
+#         'Hazardous': 10,
+#         'Electronic': 9,
+#         'Metal': 8,
+#         'Plastic': 7,
+#         'General': 6,
+#         'Glass': 5,
+#         'Paper': 4,
+#         'Organic': 3,
+#         'Food': 2,
+#     }
+
+#     INDIVIDUAL_MILESTONES = [100, 500, 1000, 5000, 10000]
+#     COMMUNITY_MILESTONES = [1000, 10000, 25000, 50000, 100000]
+
+#     def post(self, request):
+#         if not request.content_type == 'application/json':
+#             return Response({'detail': 'Content-Type must be application/json.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             request_data = request.data
+#             print(f"Received request data: {request_data}")
+#         except ParseError:
+#             return Response({'detail': 'Invalid JSON.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             trash = Trash.objects.filter(user=request.user).latest('timestamp')
+#         except Trash.DoesNotExist:
+#             return Response({'detail': 'No trash found for the user.'}, status=status.HTTP_404_NOT_FOUND)
+
+#         status_data = request_data.get('status', None)
+#         print(f"Status data received: {status_data}")
+
+#         if status_data is None:
+#             return Response({'detail': 'Status field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         if status_data in ['yes', 'no']:
+#             api_key = settings.GOOGLE_API_KEY
+#             markdown_text = generate_markdown(api_key, trash.types)
+#             Insights.objects.filter(trash=trash, user=request.user).delete()
+#             Insights.objects.create(trash=trash, user=request.user, description=markdown_text)
+
+#         if status_data == 'yes':
+#             trash.verification_status = True
+#             trash.save()
+#             self.award_points(trash)
+#             return Response({'detail': 'Trash verification status updated to true, points awarded, and insight generated.'}, status=status.HTTP_200_OK)
+
+#         if status_data == 'no':
+#             trash.verification_status = False
+#             trash.save()
+#             return Response({'detail': 'Trash verification status updated to false, and insight generated.'}, status=status.HTTP_200_OK)
+
+#         if status_data == 'na':
+#             trash.delete()
+#             return Response({'detail': 'Trash object deleted.'}, status=status.HTTP_200_OK)
+
+#         return Response({'detail': 'Invalid status value.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#     def award_points(self, trash):
+#         points = self.POINTS_AWARD_SYSTEM.get(trash.types, 0)
+#         user = trash.user
+#         community = user.community
+
+#         individual_leaderboard, created = IndividualLeaderboard.objects.get_or_create(user=user)
+#         previous_points = individual_leaderboard.points
+#         individual_leaderboard.points += points
+#         individual_leaderboard.save()
+
+#         for milestone in self.INDIVIDUAL_MILESTONES:
+#             if previous_points < milestone <= individual_leaderboard.points:
+#                 Notice.objects.create(
+#                     user=user,
+#                     message=f'Congratulations! You have reached {milestone} points.'
+#                 )
+
+#         if community:
+#             community_leaderboard, created = CommunityLeaderboard.objects.get_or_create(community=community)
+#             previous_community_points = community_leaderboard.points
+#             community_leaderboard.points += points
+#             community_leaderboard.save()
+
+#             for milestone in self.COMMUNITY_MILESTONES:
+#                 if previous_community_points < milestone <= community_leaderboard.points:
+#                     Notice.objects.create(
+#                         user=community.admin,
+#                         message=f'Community {community.name} has reached {milestone} points.'
+#                     )
 
 
 class UpdateTrashView(APIView):
@@ -159,8 +433,6 @@ class UpdateTrashView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-
 
 
 
@@ -172,7 +444,7 @@ class RetrieveTrashView(APIView):
         trash = get_object_or_404(Trash, pk=pk)
         serializer = TrashSerializer(trash)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 #LIST
 class ListTrashView(APIView):
@@ -188,11 +460,11 @@ class ListTrashView(APIView):
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(trash_items, request)
-        
+
 
         serializer = TrashSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
-    
+
 
 
 
@@ -242,7 +514,7 @@ class CreatePointView(APIView):
 
             except Exception as e:
                 return Response({'detail': 'Invalid location coordinates provided.'}, status=status.HTTP_400_BAD_REQUEST)
- 
+
             # Save the valid point
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -264,7 +536,7 @@ class CreatePointView(APIView):
 #             serializer.save()
 #             return Response(serializer.data, status=status.HTTP_200_OK)
 #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 
 
 #checked
@@ -288,9 +560,9 @@ class ListPointsByAdminAreaView(APIView):
         points = Point.objects.filter(admin_area=admin_area)
         serializer = PointSerializer(points, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
 
-#LIST  
+
+#LIST
 class RetrievePointsWithinRadiusView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -323,7 +595,7 @@ class RetrievePointsWithinRadiusView(APIView):
         paginator = PageNumberPagination()
         paginator.page_size = 100  # Set the number of posts per page
         result_page = paginator.paginate_queryset(points_within_radius, request)
-      
+
 
 
 
@@ -332,7 +604,10 @@ class RetrievePointsWithinRadiusView(APIView):
 
 
 
+import logging
+from django.http import JsonResponse
 
+logger = logging.getLogger(__name__)
 
 class JoinAreaView(APIView):
     permission_classes = [IsAuthenticated]
@@ -343,7 +618,12 @@ class JoinAreaView(APIView):
         # Ensure the user already belongs to an area and community
         if user.area and user.community:
             return Response({'detail': 'You are already part of an area and community.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Check if request.data is None
+        if request.data is None:
+            logger.error("Request data is None. Possible issue with the content type or request payload.")
+            return Response({'detail': 'Invalid request data.'}, status=status.HTTP_400_BAD_REQUEST)
+
         coordinates = request.data.get('coordinates')
         if not coordinates:
             return Response({'detail': 'Coordinates are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -351,6 +631,7 @@ class JoinAreaView(APIView):
         try:
             user_lat, user_lon = map(float, coordinates.strip().split(','))
         except Exception as e:
+            logger.error(f"Invalid coordinates provided: {coordinates}. Error: {e}")
             return Response({'detail': 'Invalid coordinates provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
         closest_admin_area = None
@@ -376,7 +657,6 @@ class JoinAreaView(APIView):
 
         if community:
             user.community = community
-            
             user.user_type = "normal"
             user.save()
 
@@ -391,7 +671,6 @@ class JoinAreaView(APIView):
 
         return Response({'detail': f'User joined area: {closest_admin_area.name}', 'community': community.name if community else 'None'}, status=status.HTTP_200_OK)
 
-
 #checked
 class DeletePointView(APIView):
     permission_classes = [IsAuthenticated]
@@ -400,7 +679,7 @@ class DeletePointView(APIView):
         point = get_object_or_404(Point, pk=pk)
         point.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
 
 
 
@@ -444,7 +723,7 @@ class CreateCommunityView(APIView):
         # Create the Community instance
         community = Community.objects.create(
             name=name,
-            admin=user, 
+            admin=user,
             area = user.area,
             email = email,
             bio = bio
@@ -495,7 +774,7 @@ class RetrieveCommunityView(APIView):
         community = get_object_or_404(Community, pk=pk)
         serializer = CommunitySerializer(community)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 class DeleteCommunityView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -532,17 +811,17 @@ class ListIndividualLeaderboardsView(APIView):
 
         name = request.query_params.get('name')
         if name is not None:
-            leaderboards = leaderboards.filter(points__icontains=name)        
-       
+            leaderboards = leaderboards.filter(points__icontains=name)
+
         # Use Django REST framework's built-in pagination
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(leaderboards, request)
-               
-       
-       
-       
-       
+
+
+
+
+
         serializer = IndividualLeaderboardSerializer(result_page, many=True)
 
 
@@ -554,19 +833,19 @@ class ListIndividualLeaderboardsView(APIView):
 class RetrieveCommunityLeaderboardView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, pk):
+    def get(self, request):
         leaderboards = CommunityLeaderboard.objects.all().order_by('-points')
 
 
         name = request.query_params.get('name')
         if name is not None:
-            leaderboards = leaderboards.filter(points__icontains=name)        
-       
+            leaderboards = leaderboards.filter(points__icontains=name)
+
         # Use Django REST framework's built-in pagination
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(leaderboards, request)
-              
+
 
 
         serializer = CommunityLeaderboardSerializer(result_page, many=True)
@@ -581,27 +860,137 @@ import geopy
 
 
 
+# class CreateAdminAreaView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def point_within_existing_areas(self, polygon):
+#         existing_areas = AdminArea.objects.all()
+#         for area in existing_areas:
+#             area_coords = [tuple(map(float, coord.strip().split(','))) for coord in area.coordinates.split(';')]
+#             existing_polygon = Polygon(area_coords)
+#             if existing_polygon.intersects(polygon) or existing_polygon.contains(polygon):
+#                 return True
+#         return False
+
+#     def is_far_enough_from_existing_areas(self, lat, lon, min_distance_km=42):
+#         existing_areas = AdminArea.objects.all()
+#         new_center = (lat, lon)
+#         for area in existing_areas:
+#             existing_lat, existing_lon = map(float, area.main_coordinate.split(','))
+#             existing_center = (existing_lat, existing_lon)
+#             distance = geodesic(new_center, existing_center).kilometers
+#             if distance < min_distance_km:
+#                 return False
+#         return True
+
+#     def post(self, request):
+#         user = request.user
+
+#         # Check if the user is an admin
+#         if user.user_type != 'admin':
+#             return Response({'detail': 'You do not have permission to create an admin area.'}, status=status.HTTP_403_FORBIDDEN)
+
+#         # Check if the user already has an admin area
+#         if AdminArea.objects.filter(admin=user).exists():
+#             return Response({'detail': 'You have already created an admin area.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Extract data from the request
+#         name = request.data.get('name', '')
+#         coordinates = request.data.get('coordinates', '')
+
+#         try:
+#             lat, lon = map(float, coordinates.strip().split(','))
+#             center_point = Point(lon, lat)
+
+#             # Radius for the 21 km² area circle
+#             radius_km = 2.586
+
+#             # Generate points around the circle
+#             points = []
+#             for angle in range(0, 360, 1):
+#                 new_point = geodesic(kilometers=radius_km).destination((lat, lon), angle)
+#                 points.append((new_point.longitude, new_point.latitude))
+
+#             # Create the circular polygon
+#             polygon = Polygon(points)
+
+#         except Exception as e:
+#             return Response({'detail': 'Invalid coordinates provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Check if the point is within any existing admin areas
+#         if self.point_within_existing_areas(polygon):
+#             return Response({'detail': 'The coordinates fall within an existing admin area.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Check if the new area is at least 42 km away from existing admin areas
+#         if not self.is_far_enough_from_existing_areas(lat, lon):
+#             return Response({'detail': 'The new admin area must be at least 42 km away from any existing admin area.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Prepare the coordinates string
+#         coordinates_str = "; ".join([f"{coord[1]}, {coord[0]}" for coord in points])
+
+#         # Create the AdminArea instance
+#         admin_area = AdminArea.objects.create(
+#             name=name,
+#             admin=user,
+#             coordinates=coordinates_str,
+#             main_coordinate=f"{lat}, {lon}"
+#         )
+
+#         user.area = admin_area
+#         user.save()
+
+
+#         template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'NewArea.html')
+#         with open(template_path, 'r', encoding='utf-8') as template_file:
+#             html_content = template_file.read()
+
+#         # Send email
+#         email_data = {
+#             'email_subject': 'You Added An Area',
+#             'email_body': html_content,
+#             'to_email': user.email,
+#             'context': {
+#                 'name': name,
+#                 'central': f"{lat}, {lon}",
+#             },
+#         }
+#         send_normal_email(email_data)
+
+#         # Serialize the created instance
+#         serializer = AdminAreaSerializer(admin_area, many=False)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 class CreateAdminAreaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def point_within_existing_areas(self, polygon):
         existing_areas = AdminArea.objects.all()
         for area in existing_areas:
-            area_coords = [tuple(map(float, coord.strip().split(','))) for coord in area.coordinates.split(';')]
-            existing_polygon = Polygon(area_coords)
-            if existing_polygon.intersects(polygon) or existing_polygon.contains(polygon):
-                return True
+            if area.coordinates:  # Ensure coordinates is not None
+                area_coords = [
+                    tuple(map(float, coord.strip().split(',')))
+                    for coord in area.coordinates.split(';')
+                    if coord.strip()  # Ensure coord is not empty
+                ]
+                existing_polygon = Polygon(area_coords)
+                if existing_polygon.intersects(polygon) or existing_polygon.contains(polygon):
+                    return True
         return False
 
     def is_far_enough_from_existing_areas(self, lat, lon, min_distance_km=42):
         existing_areas = AdminArea.objects.all()
         new_center = (lat, lon)
         for area in existing_areas:
-            existing_lat, existing_lon = map(float, area.main_coordinate.split(','))
-            existing_center = (existing_lat, existing_lon)
-            distance = geodesic(new_center, existing_center).kilometers
-            if distance < min_distance_km:
-                return False
+            if area.main_coordinate:  # Ensure main_coordinate is not None
+                try:
+                    existing_lat, existing_lon = map(float, area.main_coordinate.split(','))
+                    existing_center = (existing_lat, existing_lon)
+                    distance = geodesic(new_center, existing_center).kilometers
+                    if distance < min_distance_km:
+                        return False
+                except ValueError:
+                    continue  # Skip invalid coordinates
         return True
 
     def post(self, request):
@@ -620,6 +1009,7 @@ class CreateAdminAreaView(APIView):
         coordinates = request.data.get('coordinates', '')
 
         try:
+            # Validate and parse the coordinates
             lat, lon = map(float, coordinates.strip().split(','))
             center_point = Point(lon, lat)
 
@@ -635,7 +1025,7 @@ class CreateAdminAreaView(APIView):
             # Create the circular polygon
             polygon = Polygon(points)
 
-        except Exception as e:
+        except ValueError:
             return Response({'detail': 'Invalid coordinates provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if the point is within any existing admin areas
@@ -659,7 +1049,6 @@ class CreateAdminAreaView(APIView):
 
         user.area = admin_area
         user.save()
-
 
         template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'NewArea.html')
         with open(template_path, 'r', encoding='utf-8') as template_file:
@@ -691,7 +1080,7 @@ class ListAdminAreasView(APIView):
         admin_areas = AdminArea.objects.all()
         serializer = AdminAreaSerializer(admin_areas, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 
 
 #checked
@@ -702,7 +1091,7 @@ class RetrieveAdminAreaView(APIView):
         admin_area = get_object_or_404(AdminArea, pk=pk)
         serializer = AdminAreaSerializer(admin_area)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
 #checked
 class DeleteAdminAreaView(APIView):
     permission_classes = [IsAuthenticated]

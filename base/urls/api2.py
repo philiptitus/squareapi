@@ -76,6 +76,9 @@ class uploadImage(APIView):
 #         except Exception as e:
 #             logger.error(f'Error uploading images: {str(e)}')
 #             return Response({'detail': 'Internal Server Error'}, status=500)
+from PIL import Image  # Ensure this import is at the top of the file
+
+
 
 
 class UploadAlbum(APIView):
@@ -89,49 +92,51 @@ class UploadAlbum(APIView):
             post = Post.objects.get(id=post_id)
             community = post.community
 
-            # Assuming the files are sent as 'albums' field in the request
             albums = request.FILES.getlist('albums')
 
             if len(albums) > 3:
                 return Response({'detail': 'You can only upload up to 3 images.'}, status=status.HTTP_400_BAD_REQUEST)
 
             if community and community.ai_services:
-                # Convert uploaded images to base64
-                base64_images = [image_to_base64(album) for album in albums]
+                base64_images = [image_to_base64(Image.open(album)) for album in albums]
 
-                # Generate markdown from images
                 response_text = generate_markdown_from_images(base64_images, self.GOOGLE_API_KEY)
 
                 if response_text == "NO":
                     post.delete()
                     return Response({'detail': 'The images were rejected by the AI.'}, status=status.HTTP_400_BAD_REQUEST)
                 elif response_text == "YES":
-                    # Set the first image as the post's main image
                     if albums:
-                        post.image = albums[0]
+                        post.image.save(albums[0].name, albums[0])
                         post.save()
 
                     for album in albums:
-                        PostImage.objects.create(post=post, album=album)
+                        post_image = PostImage(post=post)
+                        post_image.album.save(album.name, album)
+                        post_image.save()
 
                     return Response({'detail': 'Images were uploaded successfully'})
                 else:
                     post.delete()
                     return Response({'detail': 'The AI response was unclear, images were rejected.'}, status=status.HTTP_400_BAD_REQUEST)
             else:
-                # Upload images without AI checks
                 if albums:
-                    post.image = albums[0]
+                    post.image.save(albums[0].name, albums[0])
                     post.save()
 
                 for album in albums:
-                    PostImage.objects.create(post=post, album=album)
+                    post_image = PostImage(post=post)
+                    post_image.album.save(album.name, album)
+                    post_image.save()
 
                 return Response({'detail': 'Images were uploaded successfully'})
         except Exception as e:
             print(f'Error uploading images: {str(e)}')
             return Response({'detail': 'Internal Server Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
- 
+
+
+
+
 class deleteComment(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -160,7 +165,7 @@ class deletePost(APIView):
             return Response("The Post Was Deleted Successfully")
         else:
             return Response("You are not allowed to delete this post", status=403)
-        
+
 
 
 
@@ -175,8 +180,14 @@ class GetPostsView(APIView):
         if CommunityBlackList.objects.filter(user=user, community=user.community).exists():
             return Response({'detail': 'You are blacklisted and cannot fetch posts in this community.'}, status=status.HTTP_403_FORBIDDEN)
 
+
+
         # Retrieve posts from the community
         posts = Post.objects.filter(community=user.community)
+
+
+        posts = posts.exclude(albums__isnull=True)
+
 
         # Filter posts by name if provided
         name = request.query_params.get('name')
@@ -187,7 +198,7 @@ class GetPostsView(APIView):
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(posts, request)
-        
+
         serializer = PostSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
@@ -241,7 +252,7 @@ class LikePost(APIView):
 
 
 
-#NOTICE       
+#NOTICE
 class CreateComment(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -298,7 +309,7 @@ class UpdatePost(APIView):
 
         post.caption = data.get('caption', post.caption)
         post.description = data.get('description', post.description)
-        
+
         if expiration_hours:
             expiration_hours = int(expiration_hours)
             post.expiration_date = timezone.now() + timedelta(hours=expiration_hours)

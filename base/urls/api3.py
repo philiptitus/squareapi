@@ -5,6 +5,7 @@ from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from better_profanity import profanity
 from django.db import transaction
+import random
 
 from rest_framework.decorators import permission_classes
 
@@ -32,7 +33,7 @@ from shapely.ops import unary_union
 
 from base.core.image_api import get_waste_type_from_image
 
- 
+
 
 class CreateReportView(APIView):
     permission_classes = [IsAuthenticated]
@@ -52,7 +53,7 @@ class CreateReportView(APIView):
         serializer = ReportSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(community=user.community, user=user)
-            
+
             # If the user is staff, send a notice to the community admin
             if user.user_type == 'staff':
                 Notice.objects.create(
@@ -70,27 +71,27 @@ class CreateReportView(APIView):
 class ListReportsByCommunityView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, community_id):
-        community = get_object_or_404(Community, id=community_id)
+    def get(self, request):
+        community = request.user.community
 
-        # Ensure the requesting user is the admin of the community
-        if request.user != community.admin:
-            return Response({'detail': 'You do not have permission to view these reports.'}, status=status.HTTP_403_FORBIDDEN)
+        # # Ensure the requesting user is the admin of the community
+        # if request.user != community.admin:
+        #     return Response({'detail': 'You do not have permission to view these reports.'}, status=status.HTTP_403_FORBIDDEN)
 
         reports = Report.objects.filter(community=community)
-        
+
         name = request.query_params.get('name')
         if name is not None:
-            reports = reports.filter(points__icontains=name)        
+            reports = reports.filter(points__icontains=name)
 
 
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(reports, request)
-        
 
 
-        
+
+
         serializer = ReportSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
@@ -107,10 +108,28 @@ class DeleteReportView(APIView):
 
         report.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
 
 
 
+class ListBlacklistedCommunitiesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Get the communities where the user is blacklisted
+        blacklisted_communities = CommunityBlackList.objects.filter(user=request.user)
+
+        # Extract community IDs from the blacklist entries
+        community_ids = blacklisted_communities.values_list('community_id', flat=True)
+
+        # Get the communities based on IDs
+        communities = Community.objects.filter(id__in=community_ids)
+
+        paginator = PageNumberPagination()
+        paginator.page_size = 10  # Set the number of communities per page
+        result_page = paginator.paginate_queryset(communities, request)
+
+        serializer = CommunitySerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 
@@ -132,7 +151,7 @@ class DeleteReportView(APIView):
 
 
 
-class AddToBlacklistView(APIView): 
+class AddToBlacklistView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -174,7 +193,7 @@ class RemoveFromBlacklistView(APIView):
         try:
             blacklist_entry = CommunityBlackList.objects.get(user=user_to_remove, community=community)
             blacklist_entry.delete()
-            
+
             # Send a notice to the user who has been removed from the blacklist
             Notice.objects.create(
                 user=user_to_remove,
@@ -202,9 +221,9 @@ class AppealBlacklistView(APIView):
 
                 subject = 'Appeal for Blacklist Removal'
                 message = f'{request.user.email} has appealed to be removed from the blacklist.\n\nDescription: {description}'
-                recipient_list = community.admin.email 
+                recipient_list = community.admin.email
 
-                template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'INTERVIEW.html')
+                template_path = os.path.join(settings.BASE_DIR, 'base', 'email_templates', 'Appeal.html')
                 with open(template_path, 'r', encoding='utf-8') as template_file:
                     html_content = template_file.read()
 
@@ -248,16 +267,16 @@ class ListBlacklistedUsersView(APIView):
 
         name = request.query_params.get('name')
         if name is not None:
-            blacklisted_users = blacklisted_users.filter(community__icontains=name)        
+            blacklisted_users = blacklisted_users.filter(community__icontains=name)
 
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of posts per page
         result_page = paginator.paginate_queryset(blacklisted_users, request)
-        
 
 
 
-        
+
+
         serializer = CommunityBlackListSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
@@ -265,63 +284,19 @@ class ListBlacklistedUsersView(APIView):
 
 
 
+class RandomInsightView(APIView):
+    permission_classes = [IsAuthenticated]
 
-from .permissions import IsCommunityAdmin
-
-
-class CreateOrganizationView(APIView):
-    permission_classes = [IsCommunityAdmin]
-
-    def post(self, request):
-        data = request.data.copy()
-        data['community'] = request.user.community.id
-        serializer = OrganizationSerializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            request.user.community.payment_services = True
-            request.user.community.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-class RetrieveOrganizationView(APIView):
-    permission_classes = [IsCommunityAdmin]
-
-    def get(self, request, pk):
-        organization = get_object_or_404(Organization, pk=pk)
-        if organization.community.admin != request.user:
-            return Response({'detail': 'You do not have permission to view this item.'}, status=status.HTTP_403_FORBIDDEN)
-        serializer = OrganizationSerializer(organization)
-        return Response(serializer.data)
-
-class UpdateOrganizationView(APIView):
-    permission_classes = [IsCommunityAdmin]
-
-    def put(self, request, pk):
-        organization = get_object_or_404(Organization, pk=pk)
-        if organization.community.admin != request.user:
-            return Response({'detail': 'You do not have permission to update this item.'}, status=status.HTTP_403_FORBIDDEN)
-        serializer = OrganizationSerializer(organization, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-class DeleteOrganizationView(APIView):
-    permission_classes = [IsCommunityAdmin]
-
-    def delete(self, request, pk):
-        organization = get_object_or_404(Organization, pk=pk)
-        
-        if organization.community.admin != request.user:
-            return Response({'detail': 'You do not have permission to delete this item.'}, status=status.HTTP_403_FORBIDDEN)
-        
-        organization.delete()
-        community = request.user.community
-        community.payment_services = False
-        community.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)    
+    def get(self, request):
+        insights = Insights.objects.filter(user=request.user)
+        if insights.exists():
+            random_insight = random.choice(insights)
+            data = {
+                "id": random_insight.id,
+                "description": random_insight.description,
+                "trash_id": random_insight.trash.id,
+                "username": random_insight.user.username,
+            }
+            return Response(data, status=status.HTTP_200_OK)
+        else:
+            return Response({'detail': 'No insights found for this user.'}, status=status.HTTP_404_NOT_FOUND)

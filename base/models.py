@@ -8,9 +8,8 @@ from .validators import *
 from django.conf import settings
 
 
- 
 
-    
+
 
 
 class AdminArea(models.Model):
@@ -18,7 +17,7 @@ class AdminArea(models.Model):
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='admin_areas')
     coordinates = models.TextField(blank=True, null=True)  # Field to store coordinates
     main_coordinate = models.CharField(max_length=255, blank=True, null=True)  # Field to store coordinates
-    
+
     def __str__(self):
         return self.name
 
@@ -30,28 +29,11 @@ class Community(models.Model):
     bio = models.TextField(null=True, blank=True)
     area = models.ForeignKey(AdminArea, related_name='area', on_delete=models.CASCADE, blank=True, null=True)
     ai_services = models.BooleanField(default=False)
-    award = models.IntegerField(default=10)
-    payment_services = models.BooleanField(default=False)
-
 
 
     def __str__(self):
         return self.name
 
-
-class Organization(models.Model):
-    community = models.ForeignKey(Community, related_name='community_roganaization', on_delete=models.CASCADE, blank=True, null=True)
-
-    name = models.CharField(max_length=255)
-    consumer_key = models.CharField(max_length=255)
-    consumer_secret = models.CharField(max_length=255)
-    initiator_name = models.CharField(max_length=255)
-    security_credential = models.CharField(max_length=255)
-    shortcode = models.CharField(max_length=10)
-    # Add other fields as necessary
-
-    def __str__(self):
-        return self.name
 
 
 
@@ -90,9 +72,10 @@ AUTH_PROVIDERS ={'email':'email', 'google':'google'}
 
 class CustomUser(AbstractUser):
 
-    community = models.ForeignKey(Community, on_delete=models.CASCADE, null=True, blank=True)
-    area = models.ForeignKey(AdminArea, related_name='area_user', on_delete=models.CASCADE, blank=True, null=True)
-
+    community = models.ForeignKey(Community, on_delete=models.SET_NULL, null=True, blank=True)
+    area = models.ForeignKey(AdminArea, related_name='area_user', on_delete=models.SET_NULL, blank=True, null=True)
+    points = models.IntegerField(default=0)
+    is_demo = models.BooleanField(default=False)
     id = models.AutoField(primary_key=True, editable=False, default=None)
     auth_provider=models.CharField(max_length=50, blank=False, null=False, default=AUTH_PROVIDERS.get('email'))
     email = models.EmailField(unique=True)
@@ -107,24 +90,43 @@ class CustomUser(AbstractUser):
         ('staff', 'staff'),
 
     ] ,blank=True, null=True )
-    
+
 
     objects = CustomUserManager()
     user_permissions = models.ManyToManyField(Permission, verbose_name='user permissions', blank=True)
+
+
 
     class Meta(AbstractUser.Meta):
         swappable = 'AUTH_USER_MODEL'
 
     def __str__(self):
         return self.email
-    
-    def tokens(self):    
+
+    def tokens(self):
         refresh = RefreshToken.for_user(self)
         return {
             "refresh":str(refresh),
             "access":str(refresh.access_token)
         }
-    
+
+
+
+
+
+class Organization(models.Model):
+    community = models.ForeignKey(Community, related_name='community_roganaization', on_delete=models.CASCADE, blank=True, null=True)
+
+    name = models.CharField(max_length=255)
+    consumer_key = models.CharField(max_length=255)
+    consumer_secret = models.CharField(max_length=255)
+    initiator_name = models.CharField(max_length=255)
+    security_credential = models.CharField(max_length=255)
+    shortcode = models.CharField(max_length=10)
+    # Add other fields as necessary
+
+    def __str__(self):
+        return self.name
 
 
 
@@ -146,7 +148,7 @@ class Notice(models.Model):
         return f'{self.user.username} - {self.message}'
 
     def save(self, *args, **kwargs):
-        
+
         super().save(*args, **kwargs)
 
         # Trigger Pusher after saving the notice
@@ -188,6 +190,8 @@ class Point(models.Model):
 
     admin_area = models.ForeignKey(AdminArea, on_delete=models.CASCADE)
     location = models.CharField(max_length=255)
+    estate = models.CharField(max_length=255, null = True, blank = True)
+
     types = models.CharField(max_length=50, choices=WASTE_TYPES, default="General")
 
 
@@ -222,7 +226,7 @@ class Trash(models.Model):
 
     def __str__(self):
         return f'{self.user.username} - {self.timestamp} - {self.types}'
-    
+
 
 
 from ckeditor.fields import RichTextField
@@ -344,12 +348,12 @@ class Like(models.Model):
     @property
     def liker_avi(self):
         return self.liker.avi if self.liker else None
-    
+
 
     @property
     def liker_name(self):
         return self.liker.username if self.liker else None
-    
+
     class Meta:
         ordering = ['-created_date']
 
@@ -365,7 +369,7 @@ class Video(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name = "videos")
     video=models.FileField(validators=[file_size])
 
-        
+
 
 
 
@@ -379,7 +383,7 @@ class Comment(models.Model):
     @property
     def comment_avi(self):
         return self.user.avi if self.user else None
-    
+
     @property
     def comment_email(self):
         return self.user.email if self.user else None
