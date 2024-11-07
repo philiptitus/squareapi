@@ -593,7 +593,7 @@ class RetrievePointsWithinRadiusView(APIView):
             points_within_radius = points_within_radius.filter(types__icontains=name)
 
         paginator = PageNumberPagination()
-        paginator.page_size = 100  # Set the number of posts per page
+        paginator.page_size = 20  # Set the number of posts per page
         result_page = paginator.paginate_queryset(points_within_radius, request)
 
 
@@ -1078,8 +1078,12 @@ class ListAdminAreasView(APIView):
 
     def get(self, request):
         admin_areas = AdminArea.objects.all()
-        serializer = AdminAreaSerializer(admin_areas, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        paginator = PageNumberPagination()
+        paginator.page_size = 10  # Set the number of communities per page
+        result_page = paginator.paginate_queryset(result_page, request)
+
+        serializer = AdminAreaSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 
