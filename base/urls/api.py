@@ -1080,7 +1080,7 @@ class ListAdminAreasView(APIView):
         admin_areas = AdminArea.objects.all()
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Set the number of communities per page
-        result_page = paginator.paginate_queryset(result_page, request)
+        result_page = paginator.paginate_queryset(admin_areas, request)
 
         serializer = AdminAreaSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
