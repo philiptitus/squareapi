@@ -86,6 +86,10 @@ class CreateTrashView(APIView):
             )
             return Response(TrashSerializer(trash).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
 from django.utils import timezone
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ParseError

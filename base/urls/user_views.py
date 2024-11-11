@@ -461,7 +461,7 @@ class RegisterUser(APIView):
         if user_type == 'staff':
             template_path = os.path.join(settings.BASE_DIR, 'base','email_templates', 'RegisterStaff.html')
         else:
-            template_path = os.path.join(settings.BASE_DIR, 'base/email_templates', 'Pay.html')
+            template_path = os.path.join(settings.BASE_DIR, 'base/email_templates', 'Register.html')
 
         try:
             with open(template_path, 'r', encoding='utf-8') as template_file:
